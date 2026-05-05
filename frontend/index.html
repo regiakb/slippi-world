@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Slippi World</title>
+  <link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+
+  <div id="root">
+    <nav>
+      <a href="#" class="logo" aria-label="Slippi World home" onclick="event.preventDefault();showPage('dashboard')">
+        <img src="./assets/logo-horizontal.png" alt="Slippi World" class="logo-img" />
+      </a>
+      <div class="nav-links" id="nav-links"></div>
+      <div class="db-stats" id="db-stats"></div>
+    </nav>
+
+    <div id="page-config"  class="page" style="display:none"></div>
+    <div id="page-dashboard" class="page" style="display:none"></div>
+    <div id="page-live" class="page" style="display:none"></div>
+    <div id="page-games"   class="page" style="display:none"></div>
+    <div id="page-opponent" class="page" style="display:none"></div>
+  </div>
+
+  <script type="module" src="./app.js"></script>
+</body>
+</html>

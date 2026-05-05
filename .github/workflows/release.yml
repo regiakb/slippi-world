@@ -1,0 +1,47 @@
+name: Build and Publish Release
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install system deps
+        run: sudo apt-get update && sudo apt-get install -y p7zip-full
+
+      - name: Install python deps
+        run: python -m pip install --upgrade pip pillow
+
+      - name: Install JS deps
+        run: bun install
+
+      - name: Build Linux AppImage
+        run: bun run package:linux:appimage
+
+      - name: Build Windows Setup EXE
+        run: bun run package:windows:exe
+
+      - name: Upload release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/SlippiWorld-linux-x64.AppImage
+            dist/SlippiWorld-Setup.exe
