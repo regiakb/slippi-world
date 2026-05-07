@@ -22,7 +22,7 @@ fi
 
 # Windows portable bundle with tray launcher + assets
 rm -rf "$PKG_DIR"
-mkdir -p "$PKG_DIR/assets"
+mkdir -p "$PKG_DIR"
 cp "$BIN_PATH" "$PKG_DIR/slippi-world-windows-x64.exe"
 cp "$ROOT_DIR/scripts/windows-tray-launcher.ps1" "$PKG_DIR/windows-tray-launcher.ps1"
 cat > "$PKG_DIR/SlippiWorld.cmd" <<'EOF'
@@ -32,8 +32,7 @@ set SCRIPT_DIR=%~dp0
 start "" /min powershell -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_DIR%windows-tray-launcher.ps1"
 exit /b 0
 EOF
-cp "$ROOT_DIR/frontend/assets/tray-icon.png" "$PKG_DIR/assets/tray-icon.png"
-cp -r "$ROOT_DIR/frontend/assets/characters" "$PKG_DIR/assets/characters"
+cp -r "$ROOT_DIR/frontend/assets" "$PKG_DIR/assets"
 
 # Build ICO from PNG for Windows tray icon
 python3 - "$PKG_DIR/assets/tray-icon.png" "$PKG_DIR/assets/tray-icon.ico" <<'PY'

@@ -25,6 +25,8 @@ rm -rf "$STAGE_DIR"
 mkdir -p "$STAGE_DIR/$APP_NAME.app/Contents/MacOS" "$STAGE_DIR/$APP_NAME.app/Contents/Resources"
 cp "$BIN_PATH" "$STAGE_DIR/$APP_NAME.app/Contents/MacOS/slippi-world"
 chmod +x "$STAGE_DIR/$APP_NAME.app/Contents/MacOS/slippi-world"
+mkdir -p "$STAGE_DIR/$APP_NAME.app/Contents/MacOS/frontend"
+cp -r "$ROOT_DIR/frontend/assets" "$STAGE_DIR/$APP_NAME.app/Contents/MacOS/frontend/assets"
 cp "$ROOT_DIR/frontend/assets/logo-horizontal.png" "$STAGE_DIR/$APP_NAME.app/Contents/Resources/icon.png"
 
 cat > "$STAGE_DIR/$APP_NAME.app/Contents/Info.plist" <<'EOF'

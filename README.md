@@ -67,8 +67,9 @@ By default, the app stores SQLite data in OS-native paths:
 
 - Linux: `~/.local/share/slippi-world/slippi-world.db`
 - Windows: `%APPDATA%/slippi-world/slippi-world.db`
+- macOS: `~/Library/Application Support/slippi-world/slippi-world.db`
 
-You can override it in Linux:
+You can override the DB path with `DB_PATH`:
 
 ```bash
 DB_PATH=/custom/path/slippi-world.db ./dist/slippi-world-linux-x64
