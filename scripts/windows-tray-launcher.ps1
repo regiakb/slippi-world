@@ -71,8 +71,14 @@ $env:AUTO_START_COMMAND = $LauncherCmd
 $server = Start-Process -FilePath $ServerExe -PassThru -WindowStyle Hidden
 Write-DebugLog ("Server started. PID={0}" -f $server.Id)
 Start-Sleep -Milliseconds 900
-Start-Process $AppUrl | Out-Null
-Write-DebugLog ("Browser open attempted: {0}" -f $AppUrl)
+# When launched from the Startup folder shortcut, SLIPPI_AUTOSTART=1 is set so
+# the app starts minimized to the system tray without popping the browser open.
+if ($env:SLIPPI_AUTOSTART -eq "1") {
+  Write-DebugLog "Autostart mode: skipping browser open"
+} else {
+  Start-Process $AppUrl | Out-Null
+  Write-DebugLog ("Browser open attempted: {0}" -f $AppUrl)
+}
 
 $notify = New-Object System.Windows.Forms.NotifyIcon
 $notify.Text = "Slippi World"

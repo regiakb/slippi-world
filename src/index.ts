@@ -71,8 +71,170 @@ let ingestBasePlayers = 0;
 const ONLY_1V1_SQL = "g.is_teams = 0 AND (SELECT COUNT(*) FROM players px WHERE px.game_id = g.id) = 2";
 const LIVE_STALE_MS = Math.max(30_000, Number(process.env.LIVE_REPLAY_STALE_MS ?? 180_000));
 const AUTO_INGEST_8H_MS = 8 * 60 * 60 * 1000;
+const SLIPPI_GQL_URL = "https://internal.slippi.gg";
+const SLIPPI_RANK_CACHE_TTL_MS = 5 * 60 * 1000;
+const SLIPPI_RANK_ERROR_TTL_MS = 60 * 1000;
 let autoIngest8hInterval: ReturnType<typeof setInterval> | null = null;
 let shutdownRequested = false;
+type RankedLeague = {
+  key: string;
+  name: string;
+  tier: string;
+  division: string | null;
+  iconPath: string;
+};
+type SlippiRankedResult = {
+  connectCode: string;
+  displayName: string | null;
+  current: RankedLeague & { elo: number; games: number };
+  best: (RankedLeague & { elo: number; games: number; season: string }) | null;
+};
+const slippiRankCache = new Map<string, { expiresAt: number; value: SlippiRankedResult | null }>();
+const slippiRankInflight = new Map<string, Promise<SlippiRankedResult | null>>();
+
+const LEAGUES: RankedLeague[] = [
+  { key: "none", name: "Unranked", tier: "Unranked", division: null, iconPath: "/assets/ranked/rank_Unranked1.svg" },
+  { key: "pending", name: "Pending", tier: "Pending", division: null, iconPath: "/assets/ranked/rank_Unranked3.svg" },
+  { key: "bronze1", name: "Bronze 1", tier: "Bronze", division: "1", iconPath: "/assets/ranked/rank_Bronze_I.svg" },
+  { key: "bronze2", name: "Bronze 2", tier: "Bronze", division: "2", iconPath: "/assets/ranked/rank_Bronze_II.svg" },
+  { key: "bronze3", name: "Bronze 3", tier: "Bronze", division: "3", iconPath: "/assets/ranked/rank_Bronze_III.svg" },
+  { key: "silver1", name: "Silver 1", tier: "Silver", division: "1", iconPath: "/assets/ranked/rank_Silver_I.svg" },
+  { key: "silver2", name: "Silver 2", tier: "Silver", division: "2", iconPath: "/assets/ranked/rank_Silver_II.svg" },
+  { key: "silver3", name: "Silver 3", tier: "Silver", division: "3", iconPath: "/assets/ranked/rank_Silver_III.svg" },
+  { key: "gold1", name: "Gold 1", tier: "Gold", division: "1", iconPath: "/assets/ranked/rank_Gold_I.svg" },
+  { key: "gold2", name: "Gold 2", tier: "Gold", division: "2", iconPath: "/assets/ranked/rank_Gold_II.svg" },
+  { key: "gold3", name: "Gold 3", tier: "Gold", division: "3", iconPath: "/assets/ranked/rank_Gold_III.svg" },
+  { key: "plat1", name: "Platinum 1", tier: "Platinum", division: "1", iconPath: "/assets/ranked/rank_Platinum_I.svg" },
+  { key: "plat2", name: "Platinum 2", tier: "Platinum", division: "2", iconPath: "/assets/ranked/rank_Platinum_II.svg" },
+  { key: "plat3", name: "Platinum 3", tier: "Platinum", division: "3", iconPath: "/assets/ranked/rank_Platinum_III.svg" },
+  { key: "diamond1", name: "Diamond 1", tier: "Diamond", division: "1", iconPath: "/assets/ranked/rank_Diamond_I.svg" },
+  { key: "diamond2", name: "Diamond 2", tier: "Diamond", division: "2", iconPath: "/assets/ranked/rank_Diamond_II.svg" },
+  { key: "diamond3", name: "Diamond 3", tier: "Diamond", division: "3", iconPath: "/assets/ranked/rank_Diamond_III.svg" },
+  { key: "master1", name: "Master 1", tier: "Master", division: "1", iconPath: "/assets/ranked/rank_Master_I.svg" },
+  { key: "master2", name: "Master 2", tier: "Master", division: "2", iconPath: "/assets/ranked/rank_Master_II.svg" },
+  { key: "master3", name: "Master 3", tier: "Master", division: "3", iconPath: "/assets/ranked/rank_Master_III.svg" },
+  { key: "grandmaster", name: "Grandmaster", tier: "Grandmaster", division: null, iconPath: "/assets/ranked/rank_Grand_Master.svg" },
+];
+const LEAGUE_BY_KEY = new Map(LEAGUES.map((league) => [league.key, league]));
+
+function leagueByKey(key: string): RankedLeague {
+  return LEAGUE_BY_KEY.get(key) ?? LEAGUE_BY_KEY.get("none")!;
+}
+
+function leagueFromRating(ratingOrdinal: number | null | undefined, hasPlacement: boolean, gamesPlayed: number): RankedLeague {
+  const rating = Number(ratingOrdinal ?? 0);
+  if (!Number.isFinite(rating) || gamesPlayed === 0) return leagueByKey("none");
+  if (gamesPlayed < 5) return leagueByKey("pending");
+  if (rating >= 2191.75 && hasPlacement) return leagueByKey("grandmaster");
+  if (rating >= 2350) return leagueByKey("master3");
+  if (rating >= 2275) return leagueByKey("master2");
+  if (rating >= 2191.75) return leagueByKey("master1");
+  if (rating >= 2136.28) return leagueByKey("diamond3");
+  if (rating >= 2073.67) return leagueByKey("diamond2");
+  if (rating >= 2003.92) return leagueByKey("diamond1");
+  if (rating >= 1927.03) return leagueByKey("plat3");
+  if (rating >= 1843) return leagueByKey("plat2");
+  if (rating >= 1751.83) return leagueByKey("plat1");
+  if (rating >= 1653.52) return leagueByKey("gold3");
+  if (rating >= 1548.07) return leagueByKey("gold2");
+  if (rating >= 1435.48) return leagueByKey("gold1");
+  if (rating >= 1315.75) return leagueByKey("silver3");
+  if (rating >= 1188.88) return leagueByKey("silver2");
+  if (rating >= 1054.87) return leagueByKey("silver1");
+  if (rating >= 913.72) return leagueByKey("bronze3");
+  if (rating >= 765.43) return leagueByKey("bronze2");
+  return leagueByKey("bronze1");
+}
+
+async function fetchSlippiRanked(connectCode: string): Promise<SlippiRankedResult | null> {
+  const code = String(connectCode ?? "").trim().toUpperCase();
+  if (!code) return null;
+  const cached = slippiRankCache.get(code);
+  if (cached && cached.expiresAt > Date.now()) return cached.value;
+  const inflight = slippiRankInflight.get(code);
+  if (inflight) return inflight;
+  const run = (async () => {
+    try {
+      const query = `
+        query UserProfilePageQuery($cc: String, $uid: String) {
+          getUser(connectCode: $cc, fbUid: $uid) {
+            displayName
+            connectCode { code }
+            rankedNetplayProfile {
+              ratingOrdinal
+              ratingUpdateCount
+              dailyGlobalPlacement
+              dailyRegionalPlacement
+            }
+            rankedNetplayProfileHistory {
+              ratingOrdinal
+              ratingUpdateCount
+              season { name }
+            }
+          }
+        }
+      `;
+      const resp = await fetch(SLIPPI_GQL_URL, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        signal: AbortSignal.timeout(3500),
+        body: JSON.stringify({
+          operationName: "UserProfilePageQuery",
+          query,
+          variables: { cc: code, uid: code },
+        }),
+      });
+      if (!resp.ok) throw new Error(`slippi status ${resp.status}`);
+      const payload = (await resp.json()) as any;
+      const user = payload?.data?.getUser;
+      if (!user?.rankedNetplayProfile) {
+        slippiRankCache.set(code, { value: null, expiresAt: Date.now() + SLIPPI_RANK_CACHE_TTL_MS });
+        return null;
+      }
+      const currentRating = Number(user.rankedNetplayProfile.ratingOrdinal ?? 0);
+      const currentGames = Number(user.rankedNetplayProfile.ratingUpdateCount ?? 0);
+      const hasPlacement = Boolean(user.rankedNetplayProfile.dailyGlobalPlacement || user.rankedNetplayProfile.dailyRegionalPlacement);
+      const currentLeague = leagueFromRating(currentRating, hasPlacement, currentGames);
+      const rankedRows = [
+        {
+          elo: currentRating,
+          games: currentGames,
+          season: "Actual",
+          league: currentLeague,
+        },
+        ...((user.rankedNetplayProfileHistory ?? []) as any[]).map((row) => {
+          const elo = Number(row?.ratingOrdinal ?? 0);
+          const games = Number(row?.ratingUpdateCount ?? 0);
+          return {
+            elo,
+            games,
+            season: String(row?.season?.name ?? "Season"),
+            league: leagueFromRating(elo, false, games),
+          };
+        }),
+      ].filter((r) => Number.isFinite(r.elo));
+      const best = rankedRows.sort((a, b) => b.elo - a.elo)[0] ?? null;
+      const out: SlippiRankedResult = {
+        connectCode: String(user.connectCode?.code ?? code),
+        displayName: user.displayName ?? null,
+        current: { ...currentLeague, elo: currentRating, games: currentGames },
+        best: best
+          ? { ...best.league, elo: best.elo, games: best.games, season: best.season }
+          : null,
+      };
+      slippiRankCache.set(code, { value: out, expiresAt: Date.now() + SLIPPI_RANK_CACHE_TTL_MS });
+      return out;
+    } catch (err) {
+      console.warn("[live] ranked fetch error", err);
+      slippiRankCache.set(code, { value: null, expiresAt: Date.now() + SLIPPI_RANK_ERROR_TTL_MS });
+      return null;
+    } finally {
+      slippiRankInflight.delete(code);
+    }
+  })();
+  slippiRankInflight.set(code, run);
+  return run;
+}
 
 function kvGet(key: string): string | undefined {
   const row = getDb()
@@ -127,11 +289,13 @@ function setAutoStartEnabled(enabled: boolean) {
     if (!existsSync(autostartDir)) mkdirSync(autostartDir, { recursive: true });
     if (enabled) {
       const execPath = getLaunchCommandPath().replace(/"/g, '\\"');
+      // env SLIPPI_AUTOSTART=1 tells the tray launcher to start minimized to tray
+      // (no browser window) when launched on session boot.
       const desktop = `[Desktop Entry]
 Type=Application
 Name=Slippi World
 Comment=Start Slippi World on login
-Exec="${execPath}"
+Exec=env SLIPPI_AUTOSTART=1 "${execPath}"
 Terminal=false
 X-GNOME-Autostart-enabled=true
 Categories=Game;Utility;
@@ -150,7 +314,10 @@ Categories=Game;Utility;
     if (!existsSync(startupDir)) mkdirSync(startupDir, { recursive: true });
     if (enabled) {
       const cmdPath = getLaunchCommandPath().replace(/"/g, '""');
-      const startupScript = `@echo off\r\nstart "" "${cmdPath}"\r\n`;
+      // SLIPPI_AUTOSTART=1 signals the tray launcher to skip opening the browser
+      // and just start minimized to the system tray.
+      const startupScript =
+        `@echo off\r\nset SLIPPI_AUTOSTART=1\r\nstart "" "${cmdPath}"\r\n`;
       writeFileSync(startupPath, startupScript, "utf8");
     } else if (existsSync(startupPath)) {
       rmSync(startupPath);
@@ -261,17 +428,19 @@ function pickLiveOpponent(
 
 type LivePlayerRow = { connectCode: string | null };
 
-function liveOpponentInsightBundle(
+async function liveOpponentInsightBundle(
   db: ReturnType<typeof getDb>,
   players: LivePlayerRow[],
   myCodes: Set<string>
-): {
+): Promise<{
   opponentCode: string | null;
   opponentHint: string | null;
   opponentInsight: { summary: unknown; byStage: unknown[]; recentGames: unknown[] } | null;
-} {
+  opponentRanked: SlippiRankedResult | null;
+}> {
   const { code: opponentCode, hint: oppHint } = pickLiveOpponent(players, myCodes);
   let opponentInsight: { summary: unknown; byStage: unknown[]; recentGames: unknown[] } | null = null;
+  let opponentRanked: SlippiRankedResult | null = null;
   if (opponentCode) {
     const p = { $code: opponentCode };
     const summary = db.query(`
@@ -340,8 +509,9 @@ function liveOpponentInsightBundle(
     if (tg > 0) {
       opponentInsight = { summary, byStage, recentGames };
     }
+    opponentRanked = await fetchSlippiRanked(opponentCode);
   }
-  return { opponentCode, opponentHint: oppHint, opponentInsight };
+  return { opponentCode, opponentHint: oppHint, opponentInsight, opponentRanked };
 }
 
 // ─── server ───────────────────────────────────────────────────────────────────
@@ -475,7 +645,7 @@ const server = Bun.serve({
             await tryIngestCompletedLiveReplay(newest.path, ingestRunning);
             tr.step("live-auto-ingest:after");
             tr.step("db-opponent:before");
-            const opp = liveOpponentInsightBundle(db, snap.players, myCodes);
+            const opp = await liveOpponentInsightBundle(db, snap.players, myCodes);
             tr.step("db-opponent:after");
             tr.finish({
               active: false,
@@ -491,6 +661,7 @@ const server = Bun.serve({
               opponentCode: opp.opponentCode,
               opponentHint: opp.opponentHint,
               opponentInsight: opp.opponentInsight,
+              opponentRanked: opp.opponentRanked,
             });
           }
           if (!snap.ok) {
@@ -511,7 +682,7 @@ const server = Bun.serve({
           }
 
           tr.step("db-opponent:before");
-          const opp = liveOpponentInsightBundle(db, snap.players, myCodes);
+          const opp = await liveOpponentInsightBundle(db, snap.players, myCodes);
           tr.step("db-opponent:after", { opponentCode: opp.opponentCode ?? null });
 
           tr.finish({
@@ -530,6 +701,7 @@ const server = Bun.serve({
             opponentCode: opp.opponentCode,
             opponentHint: opp.opponentHint,
             opponentInsight: opp.opponentInsight,
+            opponentRanked: opp.opponentRanked,
           });
         } catch (e) {
           tr.step("UNCAUGHT", { error: e instanceof Error ? e.message : String(e) });

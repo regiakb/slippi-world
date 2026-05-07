@@ -737,6 +737,45 @@ async function loadLive() {
   };
 
   function liveOpponentBlock(L) {
+    function liveRankedCard() {
+      const ranked = L.opponentRanked;
+      if (!ranked?.current) return "";
+      const current = ranked.current;
+      const best = ranked.best;
+      const fmtElo = (n) => (Number.isFinite(Number(n)) ? Math.round(Number(n)) : "—");
+      const bestDiffers = best && (best.elo > current.elo + 0.01 || best.key !== current.key);
+      return `
+        <div class="live-ranked-card">
+          <div class="live-ranked-card-head">
+            <img src="${escAttr(current.iconPath)}" alt="${escAttr(current.name)}" class="live-ranked-icon" />
+            <div>
+              <div class="live-ranked-title">Ranked (Slippi)</div>
+              <div class="live-ranked-tag">${escAttr(ranked.connectCode ?? L.opponentCode ?? "—")}</div>
+            </div>
+          </div>
+          <div class="live-ranked-grid">
+            <div class="live-ranked-item"><span class="hint">Current rank</span><b>${escAttr(current.name)}</b></div>
+            <div class="live-ranked-item"><span class="hint">Current ELO</span><b>${fmtElo(current.elo)}</b></div>
+            <div class="live-ranked-item"><span class="hint">Current league</span><b>${escAttr(current.tier)}${current.division ? ` ${escAttr(current.division)}` : ""}</b></div>
+            <div class="live-ranked-item"><span class="hint">Current games</span><b>${fmtElo(current.games)}</b></div>
+            ${
+              bestDiffers
+                ? `<div class="live-ranked-item live-ranked-item--best">
+                    <span class="hint">Best rank (historic)</span>
+                    <b>${escAttr(best.name)} · ${fmtElo(best.elo)} ELO</b>
+                    <span class="hint">${escAttr(best.season ?? "")}</span>
+                  </div>`
+                : `<div class="live-ranked-item live-ranked-item--best">
+                    <span class="hint">Best rank</span>
+                    <b>Current season peak</b>
+                    <span class="hint">${escAttr(current.name)} · ${fmtElo(current.elo)} ELO</span>
+                  </div>`
+            }
+          </div>
+        </div>
+      `;
+    }
+
     const s = L.opponentInsight?.summary;
     const byStage = L.opponentInsight?.byStage ?? [];
     const hasDbData = s && Number(s.total_games) > 0;
@@ -795,6 +834,7 @@ async function loadLive() {
     let oppBody = "";
     if (L.opponentCode) {
       oppBody += `<p><b>Tag:</b> <span class="opp-link" onclick="goOpponent(${JSON.stringify(L.opponentCode)})">${escAttr(L.opponentCode)}</span></p>`;
+      oppBody += liveRankedCard();
       if (L.opponentHint) oppBody += `<p class="hint">${escAttr(L.opponentHint)}</p>`;
       if (hasDbData) {
         oppBody += `<div class="stat-grid live-opp-stat-grid" style="margin-top:.75rem">

@@ -560,3 +560,60 @@ button:disabled { opacity: .4; cursor: not-allowed; }
   word-break: break-all;
   color: #fda4af;
 }
+.live-ranked-card {
+  margin-top: .75rem;
+  background: linear-gradient(135deg, #111a2f 0%, #1a2040 100%);
+  border: 1px solid #26457a;
+  border-radius: 8px;
+  padding: .9rem 1rem;
+}
+.live-ranked-card-head {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  margin-bottom: .7rem;
+}
+.live-ranked-icon {
+  width: 54px;
+  height: 54px;
+  object-fit: contain;
+}
+.live-ranked-title {
+  font-size: 12px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: #93c5fd;
+}
+.live-ranked-tag {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #dbeafe;
+}
+.live-ranked-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: .55rem;
+}
+.live-ranked-item {
+  background: rgba(15, 23, 42, .5);
+  border: 1px solid rgba(96, 165, 250, .22);
+  border-radius: 6px;
+  padding: .45rem .55rem;
+  display: flex;
+  flex-direction: column;
+  gap: .12rem;
+}
+.live-ranked-item b {
+  color: #e0f2fe;
+}
+.live-ranked-item--best {
+  grid-column: span 2;
+}
+@media (max-width: 700px) {
+  .live-ranked-grid {
+    grid-template-columns: 1fr;
+  }
+  .live-ranked-item--best {
+    grid-column: span 1;
+  }
+}

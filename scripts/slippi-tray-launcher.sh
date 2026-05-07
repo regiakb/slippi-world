@@ -24,7 +24,11 @@ stop_server() {
 NO_OPEN_BROWSER=1 STATIC_ASSETS_DIR="$STATIC_ASSETS_DIR" "$SERVER_BIN" &
 SERVER_PID=$!
 
-open_url
+# When launched from the desktop autostart entry, SLIPPI_AUTOSTART=1 is set
+# so the app starts minimized in the tray and does not open a browser window.
+if [ "${SLIPPI_AUTOSTART:-0}" != "1" ]; then
+  open_url
+fi
 
 cleanup() {
   stop_server
