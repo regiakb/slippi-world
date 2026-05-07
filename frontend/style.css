@@ -259,6 +259,16 @@ tr:not(.win):not(.loss):hover td { background: rgba(255,255,255,.03); }
   height: 24px;
   object-fit: contain;
 }
+.ranked-table-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: .35rem;
+}
+.ranked-table-cell img {
+  width: 18px;
+  height: 18px;
+  object-fit: contain;
+}
 
 /* ── Forms ────────────────────────────────────────────────────────────────── */
 .inline-form { display: flex; gap: .5rem; margin-top: .6rem; align-items: center; }

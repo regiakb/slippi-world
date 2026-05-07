@@ -109,6 +109,23 @@ function rankedBadge(ranked) {
   `;
 }
 
+function rankedTableCell(ranked) {
+  const r = resolveRankForTables(ranked);
+  if (!r) return "—";
+  return `
+    <span class="ranked-table-cell" title="${escAttr(r.name)} · ${fmtElo(r.elo)} ELO">
+      <img src="${escAttr(r.iconPath)}" alt="${escAttr(r.name)}" />
+      <span>${escAttr(r.name)}</span>
+    </span>
+  `;
+}
+
+function resolveRankForTables(ranked) {
+  const current = ranked?.current;
+  if (current && current.key !== "none" && current.key !== "pending") return current;
+  return ranked?.best ?? current ?? null;
+}
+
 async function api(path, opts) {
   const r = await fetch("/api" + path, opts);
   return r.json();
@@ -1122,16 +1139,28 @@ function oppDetailHTML(d) {
   const s = d.summary;
   const games = d.games ?? d.recent ?? [];
   const total = (s.my_wins??0)+(s.their_wins??0);
+  const current = d.ranked?.current;
   const best = d.ranked?.best;
   const bestLine = best
     ? `${best.name} · ${fmtElo(best.elo)} ELO${best.season ? ` (${best.season})` : ""}`
     : "—";
   return `
-    <h3>Slippi Ranked</h3>
-    <div class="stat-grid" style="margin-top:.5rem">
-      <div class="stat-card"><div class="stat-val stat-val--small">${rankedBadge(d.ranked)}</div><div class="stat-label">Current rank</div></div>
-      <div class="stat-card"><div class="stat-val">${fmtElo(d.ranked?.current?.elo)}</div><div class="stat-label">Current ELO</div></div>
-      <div class="stat-card"><div class="stat-val stat-val--small">${escAttr(bestLine)}</div><div class="stat-label">Best rank</div></div>
+    <div class="live-ranked-card" style="margin-top:.25rem;margin-bottom:1rem">
+      <div class="live-ranked-card-head">
+        ${current?.iconPath ? `<img src="${escAttr(current.iconPath)}" alt="${escAttr(current.name)}" class="live-ranked-icon" />` : ""}
+        <div>
+          <div class="live-ranked-title">Slippi Ranked</div>
+          <div class="live-ranked-tag">${escAttr(d.code ?? "—")}</div>
+        </div>
+      </div>
+      <div class="live-ranked-grid">
+        <div class="live-ranked-item"><span class="hint">Current rank</span><b>${escAttr(current?.name ?? "—")}</b></div>
+        <div class="live-ranked-item"><span class="hint">Current ELO</span><b>${fmtElo(current?.elo)}</b></div>
+        <div class="live-ranked-item live-ranked-item--best">
+          <span class="hint">Best rank</span>
+          <b>${escAttr(bestLine)}</b>
+        </div>
+      </div>
     </div>
     <div class="stat-grid" style="margin-top:1rem">
       <div class="stat-card"><div class="stat-val">${s.total_games}</div><div class="stat-label">Games vs</div></div>
@@ -1222,19 +1251,19 @@ async function loadOpponent() {
     <div id="opp-top-section">
     <h3>Top 20 Opponents</h3>
     <table>
-      <thead><tr><th>Code</th><th>Name</th><th>Rank</th><th>ELO</th><th>Games</th><th>My W%</th><th>Their Chars</th><th>Last Played</th></tr></thead>
+      <thead><tr><th>Code</th><th>Name</th><th>Games</th><th>My W%</th><th>Rank</th><th>ELO</th><th>Their Chars</th><th>Last Played</th></tr></thead>
       <tbody>
         ${top.map(o => {
           const total = (o.my_wins??0)+(o.their_wins??0);
           const chars = (o.their_chars??"").split(",").filter(Boolean).map(id=>charIcon(Number(id), 0, true)).join(" ");
-          const rank = o.ranked?.current;
+          const rank = resolveRankForTables(o.ranked);
           return `<tr class="opp-link" onclick="lookupOpponentCode('${o.connect_code}')">
             <td><b>${o.connect_code}</b></td>
             <td>${o.names??""}</td>
-            <td>${rank ? escAttr(rank.name) : "—"}</td>
-            <td>${fmtElo(rank?.elo)}</td>
             <td>${o.games}</td>
             <td>${pct(o.my_wins,total)}</td>
+            <td>${rankedTableCell(o.ranked)}</td>
+            <td>${fmtElo(rank?.elo)}</td>
             <td>${chars}</td>
             <td>${fmtDate(o.last_played)}</td>
           </tr>`;
@@ -1243,19 +1272,19 @@ async function loadOpponent() {
     </table>
     <h3 style="margin-top:1rem">Last 20 Opponent Tags Played</h3>
     <table>
-      <thead><tr><th>Code</th><th>Name</th><th>Rank</th><th>ELO</th><th>Games</th><th>My W%</th><th>Their Chars</th><th>Last Played</th></tr></thead>
+      <thead><tr><th>Code</th><th>Name</th><th>Games</th><th>My W%</th><th>Rank</th><th>ELO</th><th>Their Chars</th><th>Last Played</th></tr></thead>
       <tbody>
         ${recentTags.map(o => {
           const total = (o.my_wins??0)+(o.their_wins??0);
           const chars = (o.their_chars??"").split(",").filter(Boolean).map(id=>charIcon(Number(id), 0, true)).join(" ");
-          const rank = o.ranked?.current;
+          const rank = resolveRankForTables(o.ranked);
           return `<tr class="opp-link" onclick="lookupOpponentCode('${o.connect_code}')">
             <td><b>${o.connect_code}</b></td>
             <td>${o.names ?? ""}</td>
-            <td>${rank ? escAttr(rank.name) : "—"}</td>
-            <td>${fmtElo(rank?.elo)}</td>
             <td>${o.games}</td>
             <td>${pct(o.my_wins,total)}</td>
+            <td>${rankedTableCell(o.ranked)}</td>
+            <td>${fmtElo(rank?.elo)}</td>
             <td>${chars}</td>
             <td>${fmtDate(o.last_played)}</td>
           </tr>`;
