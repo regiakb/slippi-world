@@ -6,10 +6,10 @@ The app runs fully on your machine using Bun + SQLite.
 
 ## Features
 
-- Dashboard stats and trends
-- LIVE opponent insights while playing
+- Dashboard stats, trends, and your current/best Slippi ranked info
+- LIVE opponent insights while playing, including current and best ranked data
 - Games view with filters and infinite scroll
-- Opponents page with top and recent tags
+- Opponents page with top and recent tags, plus ranked columns (rank + ELO)
 - Configuration page for connect codes, replay folders, and ingest
 
 ## Screenshots
@@ -54,6 +54,9 @@ For releases, publish binaries as GitHub Release assets:
 
 - `SlippiWorld-linux-x64.AppImage`
 - `SlippiWorld-Setup.exe`
+- `SlippiWorld-windows-x64.zip`
+- `SlippiWorld-macos-x64.zip`
+- `SlippiWorld-macos-arm64.zip`
 
 ## How It Works
 

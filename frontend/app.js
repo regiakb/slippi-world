@@ -93,6 +93,22 @@ function fmtLcancel(p) {
   return "—";
 }
 
+function fmtElo(n) {
+  return Number.isFinite(Number(n)) ? String(Math.round(Number(n))) : "—";
+}
+
+function rankedBadge(ranked) {
+  const r = ranked?.current;
+  if (!r) return `<span class="hint">—</span>`;
+  return `
+    <span class="ranked-badge" title="${escAttr(r.name)} · ${fmtElo(r.elo)} ELO">
+      <img src="${escAttr(r.iconPath)}" alt="${escAttr(r.name)}" />
+      <span>${escAttr(r.name)}</span>
+      <span class="hint">${fmtElo(r.elo)}</span>
+    </span>
+  `;
+}
+
 async function api(path, opts) {
   const r = await fetch("/api" + path, opts);
   return r.json();
@@ -628,6 +644,8 @@ async function loadDashboard() {
   const worstMatchup = rankedMatchups.length
     ? [...rankedMatchups].sort((a, b) => a.winPct - b.winPct)[0]
     : null;
+  const myBestRank = d.myRanked?.best;
+  const myBestText = myBestRank ? `${myBestRank.name} · ${fmtElo(myBestRank.elo)} ELO` : "—";
 
   el.innerHTML = `
     <h2>Dashboard</h2>
@@ -646,6 +664,8 @@ async function loadDashboard() {
       <div class="stat-card"><div class="stat-val">${t.losses ?? "—"}</div><div class="stat-label">Losses</div></div>
       <div class="stat-card"><div class="stat-val">${(t.total_hours ?? 0)}h</div><div class="stat-label">Hours Played</div></div>
       <div class="stat-card"><div class="stat-val stat-val--small">${mostUsed}</div><div class="stat-label">Most Used Character</div></div>
+      <div class="stat-card"><div class="stat-val stat-val--small">${rankedBadge(d.myRanked)}</div><div class="stat-label">My current rank ${d.myPrimaryCode ? `(${escAttr(d.myPrimaryCode)})` : ""}</div></div>
+      <div class="stat-card"><div class="stat-val stat-val--small">${escAttr(myBestText)}</div><div class="stat-label">My best rank</div></div>
       <div class="stat-card"><div class="stat-val stat-val--small">${bestMatchup ? `${bestMatchup.winPct.toFixed(1)}%` : "—"}</div><div class="stat-label">Best Matchup ${bestMatchup ? `(${bestMatchup.games} games)` : "(min 100 games)"}</div><div class="stat-sub">${bestMatchup?.label ?? ""}</div></div>
       <div class="stat-card"><div class="stat-val stat-val--small">${worstMatchup ? `${worstMatchup.winPct.toFixed(1)}%` : "—"}</div><div class="stat-label">Worst Matchup ${worstMatchup ? `(${worstMatchup.games} games)` : "(min 100 games)"}</div><div class="stat-sub">${worstMatchup?.label ?? ""}</div></div>
     </div>
@@ -1102,7 +1122,17 @@ function oppDetailHTML(d) {
   const s = d.summary;
   const games = d.games ?? d.recent ?? [];
   const total = (s.my_wins??0)+(s.their_wins??0);
+  const best = d.ranked?.best;
+  const bestLine = best
+    ? `${best.name} · ${fmtElo(best.elo)} ELO${best.season ? ` (${best.season})` : ""}`
+    : "—";
   return `
+    <h3>Slippi Ranked</h3>
+    <div class="stat-grid" style="margin-top:.5rem">
+      <div class="stat-card"><div class="stat-val stat-val--small">${rankedBadge(d.ranked)}</div><div class="stat-label">Current rank</div></div>
+      <div class="stat-card"><div class="stat-val">${fmtElo(d.ranked?.current?.elo)}</div><div class="stat-label">Current ELO</div></div>
+      <div class="stat-card"><div class="stat-val stat-val--small">${escAttr(bestLine)}</div><div class="stat-label">Best rank</div></div>
+    </div>
     <div class="stat-grid" style="margin-top:1rem">
       <div class="stat-card"><div class="stat-val">${s.total_games}</div><div class="stat-label">Games vs</div></div>
       <div class="stat-card"><div class="stat-val">${pct(s.my_wins,total)}</div><div class="stat-label">My Win Rate</div></div>
@@ -1172,8 +1202,8 @@ async function loadOpponent() {
   const showTop = !preloadCode;
   const [top, recentTags] = showTop
     ? await Promise.all([
-      api("/opponents/top?limit=20"),
-      api("/opponents/recent?limit=20"),
+      api("/opponents/top?limit=20&includeRanked=1"),
+      api("/opponents/recent?limit=20&includeRanked=1"),
     ])
     : [[], []];
 
@@ -1192,38 +1222,44 @@ async function loadOpponent() {
     <div id="opp-top-section">
     <h3>Top 20 Opponents</h3>
     <table>
-      <thead><tr><th>Code</th><th>Name</th><th>Games</th><th>My W%</th><th>Their Chars</th><th>Last Played</th></tr></thead>
+      <thead><tr><th>Code</th><th>Name</th><th>Rank</th><th>ELO</th><th>Games</th><th>My W%</th><th>Their Chars</th><th>Last Played</th></tr></thead>
       <tbody>
         ${top.map(o => {
           const total = (o.my_wins??0)+(o.their_wins??0);
           const chars = (o.their_chars??"").split(",").filter(Boolean).map(id=>charIcon(Number(id), 0, true)).join(" ");
+          const rank = o.ranked?.current;
           return `<tr class="opp-link" onclick="lookupOpponentCode('${o.connect_code}')">
             <td><b>${o.connect_code}</b></td>
             <td>${o.names??""}</td>
+            <td>${rank ? escAttr(rank.name) : "—"}</td>
+            <td>${fmtElo(rank?.elo)}</td>
             <td>${o.games}</td>
             <td>${pct(o.my_wins,total)}</td>
             <td>${chars}</td>
             <td>${fmtDate(o.last_played)}</td>
           </tr>`;
-        }).join("") || "<tr><td colspan=6 class='hint' style='padding:1rem'>No opponents yet.</td></tr>"}
+        }).join("") || "<tr><td colspan=8 class='hint' style='padding:1rem'>No opponents yet.</td></tr>"}
       </tbody>
     </table>
     <h3 style="margin-top:1rem">Last 20 Opponent Tags Played</h3>
     <table>
-      <thead><tr><th>Code</th><th>Name</th><th>Games</th><th>My W%</th><th>Their Chars</th><th>Last Played</th></tr></thead>
+      <thead><tr><th>Code</th><th>Name</th><th>Rank</th><th>ELO</th><th>Games</th><th>My W%</th><th>Their Chars</th><th>Last Played</th></tr></thead>
       <tbody>
         ${recentTags.map(o => {
           const total = (o.my_wins??0)+(o.their_wins??0);
           const chars = (o.their_chars??"").split(",").filter(Boolean).map(id=>charIcon(Number(id), 0, true)).join(" ");
+          const rank = o.ranked?.current;
           return `<tr class="opp-link" onclick="lookupOpponentCode('${o.connect_code}')">
             <td><b>${o.connect_code}</b></td>
             <td>${o.names ?? ""}</td>
+            <td>${rank ? escAttr(rank.name) : "—"}</td>
+            <td>${fmtElo(rank?.elo)}</td>
             <td>${o.games}</td>
             <td>${pct(o.my_wins,total)}</td>
             <td>${chars}</td>
             <td>${fmtDate(o.last_played)}</td>
           </tr>`;
-        }).join("") || "<tr><td colspan=6 class='hint' style='padding:1rem'>No opponents yet.</td></tr>"}
+        }).join("") || "<tr><td colspan=8 class='hint' style='padding:1rem'>No opponents yet.</td></tr>"}
       </tbody>
     </table>
     </div>

@@ -236,6 +236,14 @@ async function fetchSlippiRanked(connectCode: string): Promise<SlippiRankedResul
   return run;
 }
 
+async function fetchRankedMap(codes: string[]): Promise<Record<string, SlippiRankedResult | null>> {
+  const uniq = [...new Set(codes.map((c) => String(c ?? "").trim().toUpperCase()).filter(Boolean))];
+  const pairs = await Promise.all(
+    uniq.map(async (code) => [code, await fetchSlippiRanked(code)] as const)
+  );
+  return Object.fromEntries(pairs);
+}
+
 function kvGet(key: string): string | undefined {
   const row = getDb()
     .query("SELECT value FROM app_kv WHERE key = $k")
@@ -750,7 +758,7 @@ const server = Bun.serve({
 
     // ── stats overview ────────────────────────────────────────────────────────
     "/api/stats/overview": {
-      GET(req) {
+      async GET(req) {
         const db = getDb();
         const timeFilter = buildYearMonthFilter(req);
         const totalsWhere = [`${ONLY_1V1_SQL}`, ...timeFilter.conditions].join(" AND ");
@@ -809,8 +817,12 @@ const server = Bun.serve({
           ORDER BY g.played_at DESC
           LIMIT 20
         `).all(timeFilter.params);
-
-        return json({ totals, byCharacter, byStage, recentGames });
+        const myCodes = (db.query("SELECT code FROM my_codes ORDER BY rowid ASC").all() as { code: string }[])
+          .map((r) => r.code)
+          .filter(Boolean);
+        const myPrimaryCode = myCodes[0] ?? null;
+        const myRanked = myPrimaryCode ? await fetchSlippiRanked(myPrimaryCode) : null;
+        return json({ totals, byCharacter, byStage, recentGames, myPrimaryCode, myRanked });
       },
     },
 
@@ -924,10 +936,11 @@ const server = Bun.serve({
 
     // ── opponents top 50 + autocomplete ───────────────────────────────────────
     "/api/opponents/top": {
-      GET(req) {
+      async GET(req) {
         const db = getDb();
         const u = new URL(req.url);
         const limit = Math.max(1, Math.min(100, Number(u.searchParams.get("limit") ?? 50)));
+        const includeRanked = u.searchParams.get("includeRanked") === "1";
         const rows = db.query(`
           SELECT
             op.connect_code,
@@ -945,15 +958,22 @@ const server = Bun.serve({
           ORDER BY games DESC
           LIMIT $limit
         `).all({ $limit: limit });
-        return json(rows);
+        if (!includeRanked) return json(rows);
+        const rankedMap = await fetchRankedMap((rows as any[]).map((r) => r.connect_code));
+        const out = (rows as any[]).map((r) => ({
+          ...r,
+          ranked: r.connect_code ? rankedMap[String(r.connect_code).toUpperCase()] ?? null : null,
+        }));
+        return json(out);
       },
     },
 
     "/api/opponents/recent": {
-      GET(req) {
+      async GET(req) {
         const db = getDb();
         const u = new URL(req.url);
         const limit = Math.max(1, Math.min(100, Number(u.searchParams.get("limit") ?? 20)));
+        const includeRanked = u.searchParams.get("includeRanked") === "1";
         const rows = db.query(`
           SELECT
             op.connect_code,
@@ -972,7 +992,13 @@ const server = Bun.serve({
           ORDER BY last_played DESC
           LIMIT $limit
         `).all({ $limit: limit });
-        return json(rows);
+        if (!includeRanked) return json(rows);
+        const rankedMap = await fetchRankedMap((rows as any[]).map((r) => r.connect_code));
+        const out = (rows as any[]).map((r) => ({
+          ...r,
+          ranked: r.connect_code ? rankedMap[String(r.connect_code).toUpperCase()] ?? null : null,
+        }));
+        return json(out);
       },
     },
 
@@ -1032,7 +1058,7 @@ const server = Bun.serve({
 
     // ── opponent lookup ────────────────────────────────────────────────────────
     "/api/opponent/:code": {
-      GET(req) {
+      async GET(req) {
         const db = getDb();
         const u = new URL(req.url);
         const code = req.params.code.toUpperCase();
@@ -1080,7 +1106,8 @@ const server = Bun.serve({
           LIMIT $limit OFFSET $offset
         `).all(p);
 
-        return json({ code, summary, byStage, games, page, limit });
+        const ranked = await fetchSlippiRanked(code);
+        return json({ code, summary, byStage, games, page, limit, ranked });
       },
     },
 

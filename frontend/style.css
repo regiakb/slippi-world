@@ -247,6 +247,19 @@ tr:not(.win):not(.loss):hover td { background: rgba(255,255,255,.03); }
 }
 .char-icon .char-name { font-size: 13px; font-weight: 600; }
 
+.ranked-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: .35rem;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+.ranked-badge img {
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
+}
+
 /* ── Forms ────────────────────────────────────────────────────────────────── */
 .inline-form { display: flex; gap: .5rem; margin-top: .6rem; align-items: center; }
 input, select {
