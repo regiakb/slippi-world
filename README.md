@@ -54,9 +54,6 @@ For releases, publish binaries as GitHub Release assets:
 
 - `SlippiWorld-linux-x64.AppImage`
 - `SlippiWorld-Setup.exe`
-- `SlippiWorld-windows-x64.zip`
-- `SlippiWorld-macos-x64.zip`
-- `SlippiWorld-macos-arm64.zip`
 
 ## How It Works
 
