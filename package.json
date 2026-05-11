@@ -8,7 +8,8 @@
     "start": "bun src/index.ts",
     "refresh-stocks": "bun scripts/refresh-player-stocks.ts",
     "package:linux:appimage": "./scripts/package-linux-appimage.sh",
-    "package:windows:exe": "./scripts/package-windows-exe.sh"
+    "package:windows:exe": "./scripts/package-windows-exe.sh",
+    "package:macos:zip": "./scripts/package-macos-zip.sh"
   },
   "devDependencies": {
     "@types/bun": "latest"

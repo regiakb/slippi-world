@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
+# Builds a .dmg on macOS only. For arm64/x64 .app zips from Linux or CI, use package-macos-zip.sh.
 set -euo pipefail
 
 if [[ "$(uname -s)" != "Darwin" ]]; then
-  echo "This script must be run on macOS (hdiutil required)." >&2
+  echo "This script must be run on macOS (hdiutil required). Use ./scripts/package-macos-zip.sh for cross-builds." >&2
   exit 1
 fi
 
