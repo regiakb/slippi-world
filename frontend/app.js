@@ -120,6 +120,16 @@ function rankedTableCell(ranked) {
   `;
 }
 
+function rankedLine(rank, suffix = "") {
+  if (!rank) return "—";
+  return `
+    <span class="ranked-inline">
+      <img src="${escAttr(rank.iconPath)}" alt="${escAttr(rank.name)}" />
+      <span>${escAttr(rank.name)}${suffix ? ` · ${escAttr(suffix)}` : ""}</span>
+    </span>
+  `;
+}
+
 function resolveRankForTables(ranked) {
   const current = ranked?.current;
   if (current && current.key !== "none" && current.key !== "pending") return current;
@@ -303,7 +313,7 @@ async function openGameDetail(gameId) {
   document.body.appendChild(overlay);
 }
 
-// ─── nav ─────────────────────────────────────────────────────────────────────
+// ─── nav / URL routing ───────────────────────────────────────────────────────
 let currentPage = null;
 let _livePoll = null;
 const pages = {
@@ -314,7 +324,73 @@ const pages = {
   config:    { label:"Configuration",    load: loadConfig },
 };
 
-function showPage(name) {
+const PAGE_PATHS = {
+  dashboard: "/dashboard",
+  live: "/live",
+  games: "/games",
+  opponent: "/opponent",
+  config: "/config",
+};
+
+const PATH_TO_PAGE = {
+  "/": "dashboard",
+  "/dashboard": "dashboard",
+  "/live": "live",
+  "/games": "games",
+  "/opponent": "opponent",
+  "/config": "config",
+};
+
+const HASH_TO_PAGE = {
+  dashboard: "dashboard",
+  live: "live",
+  games: "games",
+  opponent: "opponent",
+  opponents: "opponent",
+  config: "config",
+  configuration: "config",
+};
+
+function normalizePathname(pathname) {
+  const p = pathname || "/";
+  if (p.length > 1 && p.endsWith("/")) return p.slice(0, -1);
+  return p;
+}
+
+function pathForPage(name) {
+  return PAGE_PATHS[name] ?? "/dashboard";
+}
+
+function readRouteFromLocation() {
+  const normPath = normalizePathname(location.pathname);
+
+  const pathOnly =
+    normPath === "/live" ||
+    normPath === "/games" ||
+    normPath === "/opponent" ||
+    normPath === "/config";
+  if (pathOnly && PATH_TO_PAGE[normPath]) return PATH_TO_PAGE[normPath];
+  if (normPath === "/dashboard") return "dashboard";
+
+  const hashSeg = (location.hash || "")
+    .replace(/^#\/?/, "")
+    .split(/[?&]/)[0]
+    .toLowerCase();
+  if (hashSeg && HASH_TO_PAGE[hashSeg]) return HASH_TO_PAGE[hashSeg];
+
+  if (normPath === "/" || normPath === "") return "dashboard";
+
+  return "dashboard";
+}
+
+/**
+ * @param {string} name
+ * @param {{ skipUrl?: boolean }} [options]
+ */
+function showPage(name, options = {}) {
+  const { skipUrl = false } = options;
+  if (!pages[name]) name = "dashboard";
+
   if (_livePoll && name !== "live") {
     clearTimeout(_livePoll);
     _livePoll = null;
@@ -324,14 +400,53 @@ function showPage(name) {
   }
   document.querySelectorAll(".nav-btn").forEach(b => b.classList.toggle("active", b.dataset.page === name));
   currentPage = name;
+
+  if (!skipUrl) {
+    const next = pathForPage(name);
+    const normCur = normalizePathname(location.pathname);
+    if (normCur !== next) {
+      history.pushState({ page: name }, "", next);
+    }
+  }
+
   pages[name].load();
+}
+
+function initHistoryRouting() {
+  window.addEventListener("popstate", () => {
+    showPage(readRouteFromLocation(), { skipUrl: true });
+  });
+  window.addEventListener("hashchange", () => {
+    showPage(readRouteFromLocation(), { skipUrl: true });
+  });
 }
 
 function initNav() {
   const nav = $("nav-links");
-  nav.innerHTML = Object.entries(pages).map(([k,v]) =>
-    `<button class="nav-btn" data-page="${k}" onclick="showPage('${k}')">${v.label}</button>`
-  ).join("");
+  nav.innerHTML = Object.entries(pages).map(([k, v]) => {
+    const href = pathForPage(k);
+    return `<a href="${href}" class="nav-btn" data-page="${k}">${v.label}</a>`;
+  }).join("");
+
+  const navClick = (e) => {
+    const a = e.target.closest?.("a.nav-btn");
+    if (!a || !nav.contains(a)) return;
+    if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    e.preventDefault();
+    showPage(a.dataset.page);
+  };
+  nav.addEventListener("click", navClick);
+
+  const logo = document.querySelector("nav .logo");
+  if (logo) {
+    logo.setAttribute("href", pathForPage("dashboard"));
+    logo.addEventListener("click", (e) => {
+      if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+      e.preventDefault();
+      showPage("dashboard");
+    });
+  }
+
   window.showPage = showPage;
 }
 
@@ -662,7 +777,6 @@ async function loadDashboard() {
     ? [...rankedMatchups].sort((a, b) => a.winPct - b.winPct)[0]
     : null;
   const myBestRank = d.myRanked?.best;
-  const myBestText = myBestRank ? `${myBestRank.name} · ${fmtElo(myBestRank.elo)} ELO` : "—";
 
   el.innerHTML = `
     <h2>Dashboard</h2>
@@ -682,7 +796,7 @@ async function loadDashboard() {
       <div class="stat-card"><div class="stat-val">${(t.total_hours ?? 0)}h</div><div class="stat-label">Hours Played</div></div>
       <div class="stat-card"><div class="stat-val stat-val--small">${mostUsed}</div><div class="stat-label">Most Used Character</div></div>
       <div class="stat-card"><div class="stat-val stat-val--small">${rankedBadge(d.myRanked)}</div><div class="stat-label">My current rank ${d.myPrimaryCode ? `(${escAttr(d.myPrimaryCode)})` : ""}</div></div>
-      <div class="stat-card"><div class="stat-val stat-val--small">${escAttr(myBestText)}</div><div class="stat-label">My best rank</div></div>
+      <div class="stat-card"><div class="stat-val stat-val--small">${rankedLine(myBestRank, `${fmtElo(myBestRank?.elo)} ELO`)}</div><div class="stat-label">My best rank</div></div>
       <div class="stat-card"><div class="stat-val stat-val--small">${bestMatchup ? `${bestMatchup.winPct.toFixed(1)}%` : "—"}</div><div class="stat-label">Best Matchup ${bestMatchup ? `(${bestMatchup.games} games)` : "(min 100 games)"}</div><div class="stat-sub">${bestMatchup?.label ?? ""}</div></div>
       <div class="stat-card"><div class="stat-val stat-val--small">${worstMatchup ? `${worstMatchup.winPct.toFixed(1)}%` : "—"}</div><div class="stat-label">Worst Matchup ${worstMatchup ? `(${worstMatchup.games} games)` : "(min 100 games)"}</div><div class="stat-sub">${worstMatchup?.label ?? ""}</div></div>
     </div>
@@ -799,13 +913,13 @@ async function loadLive() {
               bestDiffers
                 ? `<div class="live-ranked-item live-ranked-item--best">
                     <span class="hint">Best rank (historic)</span>
-                    <b>${escAttr(best.name)} · ${fmtElo(best.elo)} ELO</b>
+                    <b>${rankedLine(best, `${fmtElo(best.elo)} ELO`)}</b>
                     <span class="hint">${escAttr(best.season ?? "")}</span>
                   </div>`
                 : `<div class="live-ranked-item live-ranked-item--best">
                     <span class="hint">Best rank</span>
                     <b>Current season peak</b>
-                    <span class="hint">${escAttr(current.name)} · ${fmtElo(current.elo)} ELO</span>
+                    <span class="hint">${rankedLine(current, `${fmtElo(current.elo)} ELO`)}</span>
                   </div>`
             }
           </div>
@@ -1141,9 +1255,6 @@ function oppDetailHTML(d) {
   const total = (s.my_wins??0)+(s.their_wins??0);
   const current = d.ranked?.current;
   const best = d.ranked?.best;
-  const bestLine = best
-    ? `${best.name} · ${fmtElo(best.elo)} ELO${best.season ? ` (${best.season})` : ""}`
-    : "—";
   return `
     <div class="live-ranked-card" style="margin-top:.25rem;margin-bottom:1rem">
       <div class="live-ranked-card-head">
@@ -1158,7 +1269,8 @@ function oppDetailHTML(d) {
         <div class="live-ranked-item"><span class="hint">Current ELO</span><b>${fmtElo(current?.elo)}</b></div>
         <div class="live-ranked-item live-ranked-item--best">
           <span class="hint">Best rank</span>
-          <b>${escAttr(bestLine)}</b>
+          <b>${rankedLine(best, `${fmtElo(best?.elo)} ELO`)}</b>
+          ${best?.season ? `<span class="hint">${escAttr(best.season)}</span>` : ""}
         </div>
       </div>
     </div>
@@ -1327,5 +1439,6 @@ async function loadOpponent() {
 
 // ─── init ─────────────────────────────────────────────────────────────────────
 initNav();
+initHistoryRouting();
 updateDbStats();
-showPage("dashboard");
+showPage(readRouteFromLocation(), { skipUrl: true });

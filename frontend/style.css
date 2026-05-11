@@ -75,6 +75,8 @@ nav {
   background: none;
   border: none;
   color: var(--silver);
+  text-decoration: none;
+  display: inline-block;
   padding: 0.35rem 1rem;
   border-radius: 4px;
   cursor: pointer;
@@ -265,6 +267,16 @@ tr:not(.win):not(.loss):hover td { background: rgba(255,255,255,.03); }
   gap: .35rem;
 }
 .ranked-table-cell img {
+  width: 18px;
+  height: 18px;
+  object-fit: contain;
+}
+.ranked-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: .35rem;
+}
+.ranked-inline img {
   width: 18px;
   height: 18px;
   object-fit: contain;

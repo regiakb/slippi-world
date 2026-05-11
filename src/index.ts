@@ -529,6 +529,11 @@ const server = Bun.serve({
 
   routes: {
     "/": index,
+    "/dashboard": index,
+    "/live": index,
+    "/games": index,
+    "/opponent": index,
+    "/config": index,
 
     // ── config ──────────────────────────────────────────────────────────────
     "/api/config": {
