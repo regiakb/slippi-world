@@ -7,6 +7,7 @@ import {
   isRefreshPlayerStocksRunning,
 } from "./parser/ingest";
 import { parseLiveReplay } from "./parser/live-snapshot";
+import { setSlpWinner } from "./parser/slp-edit";
 import { findNewestSlpWithMtime } from "./live/replay-watch";
 import { logLiveStartupHint, startLiveTrace } from "./live/live-trace";
 import index from "../frontend/index.html";
@@ -1037,7 +1038,7 @@ const server = Bun.serve({
         const db = getDb();
         const id = Number(req.params.id);
         const game = db.query(`
-          SELECT id, played_at, stage_id, duration_frames, platform, slp_version, is_teams, file_path
+          SELECT id, played_at, stage_id, duration_frames, platform, slp_version, is_teams, file_path, result_edited
           FROM games g
           WHERE id = $id
             AND ${ONLY_1V1_SQL}
@@ -1058,6 +1059,42 @@ const server = Bun.serve({
         `).all({ $id: id });
 
         return json({ game, players });
+      },
+    },
+
+    // ── manual result edit ─────────────────────────────────────────────────────
+    "/api/games/:id/result": {
+      async POST(req) {
+        const db = getDb();
+        const id = Number(req.params.id);
+        const { winnerPort, editSlp } = await body<{ winnerPort?: number; editSlp?: boolean }>(req);
+        const game = db.query("SELECT id, file_path FROM games WHERE id = $id").get({ $id: id }) as
+          | { id: number; file_path: string }
+          | null;
+        if (!game) return json({ error: "not found" }, 404);
+        const ports = (db.query("SELECT port FROM players WHERE game_id = $id").all({ $id: id }) as { port: number }[])
+          .map((p) => p.port);
+        if (ports.length !== 2 || typeof winnerPort !== "number" || !ports.includes(winnerPort)) {
+          return json({ error: "winnerPort must be one of the game's two ports" }, 400);
+        }
+        const loserPort = ports.find((p) => p !== winnerPort)!;
+
+        let slp: ReturnType<typeof setSlpWinner> | null = null;
+        if (editSlp) {
+          try {
+            slp = setSlpWinner(game.file_path, winnerPort, loserPort);
+          } catch (e) {
+            slp = { ok: false, error: e instanceof Error ? e.message : String(e) };
+          }
+        }
+
+        db.transaction(() => {
+          db.query("UPDATE players SET is_winner = CASE WHEN port = $w THEN 1 ELSE 0 END WHERE game_id = $id")
+            .run({ $id: id, $w: winnerPort });
+          db.query("UPDATE games SET result_edited = 1 WHERE id = $id").run({ $id: id });
+        })();
+
+        return json({ ok: true, slp });
       },
     },
 

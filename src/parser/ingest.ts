@@ -273,7 +273,7 @@ async function backfillStatsInBackground(
   const updatePlayer = db.prepare(`
     UPDATE players
     SET end_stocks = $endStocks,
-        is_winner = $isWinner,
+        is_winner = CASE WHEN (SELECT result_edited FROM games WHERE id = $gameId) = 1 THEN is_winner ELSE $isWinner END,
         is_me = $isMe
     WHERE game_id = $gameId AND port = $port
   `);
@@ -615,7 +615,7 @@ export async function refreshPlayerEndStocksFromReplayFiles(): Promise<{
     const updatePlayer = db.prepare(`
       UPDATE players
       SET end_stocks = $endStocks,
-          is_winner = $isWinner
+          is_winner = CASE WHEN (SELECT result_edited FROM games WHERE id = $gameId) = 1 THEN is_winner ELSE $isWinner END
       WHERE game_id = $gameId AND port = $port
     `);
 

@@ -127,6 +127,11 @@ function initSchema(db: Database) {
       occurred_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
     )
   `);
+  const gameCols = (db.query("PRAGMA table_info(games)").all() as { name: string }[]).map((c) => c.name);
+  if (!gameCols.includes("result_edited")) {
+    // 1 = winner set manually from the UI; re-parsing must not overwrite players.is_winner.
+    db.run("ALTER TABLE games ADD COLUMN result_edited INTEGER NOT NULL DEFAULT 0");
+  }
   db.run("CREATE INDEX IF NOT EXISTS idx_players_game_id     ON players(game_id)");
   db.run("CREATE INDEX IF NOT EXISTS idx_players_connect_code ON players(connect_code)");
   db.run("CREATE INDEX IF NOT EXISTS idx_stats_game_id       ON stats(game_id)");

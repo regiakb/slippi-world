@@ -306,11 +306,57 @@ async function openGameDetail(gameId) {
         <span>⏱ ${fmtFrames(g.duration_frames)}</span>
         <span>🎮 ${g.platform ?? "—"}</span>
         <span>📁 SLP v${g.slp_version ?? "?"}</span>
+        ${g.result_edited ? `<span>✏️ Result edited manually</span>` : ""}
       </div>
+      ${players.length === 2 ? `
+      <div class="result-edit">
+        <div class="result-edit-title">Change result</div>
+        <div class="result-edit-actions">
+          ${players.map((p) => `
+            <button data-winner-port="${p.port}" ${p.is_winner === 1 ? "disabled" : ""}>
+              ${p.connect_code ?? p.display_name ?? "P"+(p.port+1)} wins
+            </button>`).join("")}
+          <label class="result-edit-slp">
+            <input type="checkbox" id="result-edit-slp" /> Also rewrite .slp file (backup saved as .slp.bak)
+          </label>
+        </div>
+        <div class="hint" id="result-edit-msg"></div>
+      </div>` : ""}
     </div>`;
+  overlay.querySelectorAll("[data-winner-port]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const msg = overlay.querySelector("#result-edit-msg");
+      overlay.querySelectorAll("[data-winner-port]").forEach((b) => { b.disabled = true; });
+      const r = await api(`/games/${gameId}/result`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          winnerPort: Number(btn.dataset.winnerPort),
+          editSlp: overlay.querySelector("#result-edit-slp")?.checked ?? false,
+        }),
+      });
+      if (r.error) {
+        msg.textContent = `Error: ${r.error}`;
+        overlay.querySelectorAll("[data-winner-port]").forEach((b) => { b.disabled = false; });
+        return;
+      }
+      overlay.remove();
+      const reopened = await openGameDetail(gameId);
+      const newMsg = reopened?.querySelector("#result-edit-msg");
+      if (newMsg) {
+        newMsg.textContent = !r.slp
+          ? "Result saved in database."
+          : r.slp.ok
+            ? "Result saved in database and .slp file."
+            : `Result saved in database. .slp not changed: ${r.slp.error}`;
+      }
+      if (currentPage === "games") loadGames(true);
+    });
+  });
   overlay.addEventListener("click", (e) => { if (e.target === overlay) overlay.remove(); });
   document.addEventListener("keydown", function esc(e) { if (e.key==="Escape") { overlay.remove(); document.removeEventListener("keydown",esc); } });
   document.body.appendChild(overlay);
+  return overlay;
 }
 
 // ─── nav / URL routing ───────────────────────────────────────────────────────
