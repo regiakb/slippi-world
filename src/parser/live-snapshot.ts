@@ -1,6 +1,7 @@
 import { SlippiGame } from "@slippi/slippi-js/node";
 import type { LiveTrace } from "../live/live-trace";
 import { liveParseVerbose } from "../live/live-trace";
+import { resolvePlayerIdentity } from "./player-identity";
 
 /**
  * Same approach as slippi-ops MatchTracker: SlippiGame with processOnTheFly + one instance per path
@@ -102,19 +103,13 @@ export function parseLiveReplay(filePath: string, trace?: LiveTrace): LiveSnapsh
 
     const players: LivePlayer[] = (settings.players ?? []).map((p) => {
       const metaPlayer = metadata?.players?.[p.playerIndex];
-      const codeFromSettings =
-        typeof p.connectCode === "string" && p.connectCode.trim() ? p.connectCode.trim() : null;
-      const codeFromMeta = metaPlayer?.names?.code?.trim() || null;
-      const nameFromSettings =
-        (typeof p.displayName === "string" && p.displayName.trim() ? p.displayName.trim() : null) ??
-        (typeof p.nametag === "string" && p.nametag.trim() ? p.nametag.trim() : null);
-      const nameFromMeta = metaPlayer?.names?.netplay?.trim() || null;
+      const { displayName, connectCode } = resolvePlayerIdentity(p, metaPlayer);
       return {
         port: p.playerIndex,
         characterId: p.characterId ?? null,
         characterColor: p.characterColor ?? null,
-        displayName: nameFromSettings ?? nameFromMeta ?? null,
-        connectCode: codeFromSettings ?? codeFromMeta ?? null,
+        displayName,
+        connectCode,
         startStocks: p.startStocks ?? null,
         endStocks: endStocksByPort.get(p.playerIndex) ?? null,
         percent: percentByPort.get(p.playerIndex) ?? null,

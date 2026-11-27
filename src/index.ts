@@ -1,4 +1,5 @@
 import { getDb } from "./db/schema";
+import { runStartupMaintenance } from "./db/maintenance";
 import {
   ingest,
   stopParserWork,
@@ -9,6 +10,7 @@ import {
 import { parseLiveReplay } from "./parser/live-snapshot";
 import { setSlpWinner } from "./parser/slp-edit";
 import { findNewestSlpWithMtime } from "./live/replay-watch";
+import { getSpectatorSnapshot, getSpectatorStatus, startSpectatorFeed, stopSpectatorFeed } from "./live/spectator-live";
 import { logLiveStartupHint, startLiveTrace } from "./live/live-trace";
 import index from "../frontend/index.html";
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
@@ -17,6 +19,8 @@ import { join, normalize } from "node:path";
 
 getDb(); // init DB on startup
 logLiveStartupHint();
+startSpectatorFeed();
+runStartupMaintenance();
 
 const PORT = Number(process.env.PORT ?? 7474);
 const FRONTEND_DIR = join(import.meta.dir, "../frontend");
@@ -399,6 +403,7 @@ function gracefulShutdown(server: ReturnType<typeof Bun.serve>) {
   setTimeout(() => {
     try {
       stopParserWork();
+      stopSpectatorFeed();
       server.stop(true);
     } finally {
       process.exit(0);
@@ -615,6 +620,33 @@ const server = Bun.serve({
             (db.query("SELECT code FROM my_codes").all() as { code: string }[]).map((r) => r.code.toUpperCase())
           );
           tr.step("after-config-queries", { watchDirs: watchPaths.length, myCodes: myCodes.size });
+          const spectator = getSpectatorStatus();
+
+          // 1) Game streamed by the emulator's spectator server (Melee Unlocked writes the .slp only at
+          //    game end; Slippi Dolphin serves the same feed). 2) Otherwise tail the newest .slp on disk.
+          const specSnap = getSpectatorSnapshot();
+          if (specSnap) {
+            tr.step("db-opponent:before", { source: "spectator" });
+            const opp = await liveOpponentInsightBundle(db, specSnap.players, myCodes);
+            tr.step("db-opponent:after", { opponentCode: opp.opponentCode ?? null });
+            const ageMs = spectator.lastDataAtMs != null ? Date.now() - spectator.lastDataAtMs : 0;
+            tr.finish({ active: true, source: "spectator", lastFrame: specSnap.game.durationFrames });
+            return json({
+              watchPaths,
+              staleMs: LIVE_STALE_MS,
+              source: "spectator",
+              spectator,
+              file: { path: specSnap.filePath, mtimeMs: spectator.lastDataAtMs, ageMs },
+              fileHot: true,
+              active: true,
+              reason: null,
+              snapshot: specSnap,
+              opponentCode: opp.opponentCode,
+              opponentHint: opp.opponentHint,
+              opponentInsight: opp.opponentInsight,
+              opponentRanked: opp.opponentRanked,
+            });
+          }
 
           if (watchPaths.length === 0) {
             tr.finish({ active: false, reason: "no_directories" });
@@ -652,7 +684,7 @@ const server = Bun.serve({
             err: snap.ok ? undefined : snap.error,
           });
 
-          const baseLive = { watchPaths, staleMs: LIVE_STALE_MS, file: fileInfo, fileHot };
+          const baseLive = { watchPaths, staleMs: LIVE_STALE_MS, file: fileInfo, fileHot, source: "file", spectator };
 
           if (snap.ok && snap.gameEnded) {
             tr.step("live-auto-ingest:before");

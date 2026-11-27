@@ -2,6 +2,7 @@ import { existsSync, readdirSync } from "fs";
 import { join, extname } from "path";
 import { cpus } from "os";
 import { getDb } from "../db/schema";
+import { relinkIfKnownGame } from "../db/maintenance";
 import { parseSlp } from "./worker";
 import type { ParseResult, ParseError, ParseMode } from "./worker";
 
@@ -209,6 +210,8 @@ export async function tryIngestCompletedLiveReplay(
 
     const jobs: BackfillJob[] = [];
     db.transaction(() => {
+      // Same game already stored under another path (replay moved/copied): re-point it, don't duplicate.
+      if (relinkIfKnownGame(db, result.filePath, result.game, result.players)) return;
       const info = insertGame.run({
         $filePath: result.filePath,
         $fileHash: result.filePath,
@@ -481,6 +484,10 @@ export async function ingest(
             continue;
           }
 
+          if (relinkIfKnownGame(db, result.filePath, result.game, result.players)) {
+            progress.skipped++;
+            continue;
+          }
           const info = insertGame.run({
             $filePath: result.filePath,
             // Keep schema compatibility without expensive hashing.

@@ -1,4 +1,5 @@
 import { SlippiGame } from "@slippi/slippi-js/node";
+import { resolvePlayerIdentity } from "./player-identity";
 
 const MIN_FRAMES = 1800; // 30s × 60fps
 export type ParseMode = "fast" | "full";
@@ -138,8 +139,7 @@ export async function parseSlp(filePath: string, mode: ParseMode = "full"): Prom
         port: p.playerIndex,
         characterId: p.characterId ?? null,
         characterColor: p.characterColor ?? null,
-        displayName: metaPlayer?.names?.netplay ?? p.displayName ?? null,
-        connectCode: metaPlayer?.names?.code ?? null,
+        ...resolvePlayerIdentity(p, metaPlayer),
         startStocks: p.startStocks ?? null,
         endStocks: endStocksByPort.get(p.playerIndex) ?? statsFallbackStocks,
         isWinner: winnersSet.size > 0 ? winnersSet.has(p.playerIndex) : null,

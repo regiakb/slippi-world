@@ -1099,7 +1099,11 @@ async function loadLive() {
         <div class="live-match">
           <h3>Current match</h3>
           <p><b>Stage:</b> ${stageName(g.stageId)} · <b>Teams:</b> ${g.isTeams ? "yes" : "no"}</p>
-          <p class="hint" style="margin:.35rem 0 .75rem">Last touched: <b>${fmtDuration(L.file?.ageMs)}</b> ago · In-game time: <b>${fmtFrames(g.durationFrames)}</b></p>
+          <p class="hint" style="margin:.35rem 0 .75rem">${
+            L.source === "spectator"
+              ? `Source: <b>live feed</b> (${escAttr(L.spectator?.emulator?.nick || "emulator")} · ${escAttr(L.spectator?.host ?? "")}:${escAttr(String(L.spectator?.port ?? ""))})`
+              : `Last touched: <b>${fmtDuration(L.file?.ageMs)}</b> ago`
+          } · In-game time: <b>${fmtFrames(g.durationFrames)}</b></p>
           <div class="live-players">${playersHtml}</div>
         </div>
         ${oppSection}`;
