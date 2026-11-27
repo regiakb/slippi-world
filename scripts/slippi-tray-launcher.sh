@@ -4,7 +4,7 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SERVER_BIN="$HERE/slippi-world"
 APPDIR="$(cd "$HERE/../.." && pwd)"
-ICON_PATH="$APPDIR/slippi-world.png"
+ICON_PATH="$APPDIR/usr/share/icons/hicolor/256x256/apps/slippi-world.png"
 STATIC_ASSETS_DIR="$APPDIR/frontend/assets"
 PORT="${PORT:-7474}"
 APP_URL="http://localhost:${PORT}"
@@ -101,11 +101,23 @@ def monitor_server():
         Gtk.main_quit()
         return False
 
-indicator = AppIndicator3.Indicator.new(
-    "slippi-world-indicator",
-    icon_path if os.path.exists(icon_path) else "applications-games",
-    AppIndicator3.IndicatorCategory.APPLICATION_STATUS,
-)
+# Pass icon name + icon theme root instead of an absolute file path:
+# KDE Plasma's tray does not load absolute paths sent as IconName, and it
+# looks the name up inside a theme layout (<root>/hicolor/256x256/apps/).
+if os.path.exists(icon_path):
+    icon_theme_root = os.path.abspath(os.path.join(os.path.dirname(icon_path), "../../.."))
+    indicator = AppIndicator3.Indicator.new_with_path(
+        "slippi-world-indicator",
+        os.path.splitext(os.path.basename(icon_path))[0],
+        AppIndicator3.IndicatorCategory.APPLICATION_STATUS,
+        icon_theme_root,
+    )
+else:
+    indicator = AppIndicator3.Indicator.new(
+        "slippi-world-indicator",
+        "applications-games",
+        AppIndicator3.IndicatorCategory.APPLICATION_STATUS,
+    )
 indicator.set_status(AppIndicator3.IndicatorStatus.ACTIVE)
 indicator.set_title("Slippi World")
 

@@ -34,7 +34,9 @@ Terminal=false
 Categories=Game;Utility;
 EOF
 
-cp "$ROOT_DIR/frontend/assets/tray-icon.png" "$APP_DIR/usr/share/icons/hicolor/256x256/apps/slippi-world.png"
+# tray-icon.png is not square: pad it to a 256x256 icon (KDE menus/tray expect square icons)
+magick "$ROOT_DIR/frontend/assets/tray-icon.png" -background none -resize 256x256 -gravity center -extent 256x256 \
+  "$APP_DIR/usr/share/icons/hicolor/256x256/apps/slippi-world.png"
 cp "$APP_DIR/usr/share/applications/slippi-world.desktop" "$APP_DIR/slippi-world.desktop"
 cp "$APP_DIR/usr/share/icons/hicolor/256x256/apps/slippi-world.png" "$APP_DIR/slippi-world.png"
 cat > "$APP_DIR/AppRun" <<'EOF'
